@@ -26,6 +26,10 @@ namespace Microsoft.DotNet.Darc
 
         private string VstsProjectName { get; set; }
 
+        private string VstsPrUri { get; set; }
+
+        public GitRepoType Type { get; set; } = GitRepoType.Vsts;
+
         public VstsClient(string accessToken)
         {
             personalAccessToken = accessToken;
@@ -35,7 +39,7 @@ namespace Microsoft.DotNet.Darc
         {
             Console.WriteLine($"Getting the contents of file '{filePath}' from repo '{repoUri}' in branch '{branch}'...");
             string repoName = SetApiUriAndGetRepoName(repoUri);
-            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"git/repositories/{repoName}/items?path={filePath}&versionDescriptor[version]={branch}&includeContent=true");
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repoName}/items?path={filePath}&version={branch}&includeContent=true");
 
             Console.WriteLine($"Getting the contents of file '{filePath}' from repo '{repoUri}' in branch '{branch}' succeeded!");
 
@@ -63,7 +67,7 @@ namespace Microsoft.DotNet.Darc
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             };
 
-            response = await this.ExecuteGitCommand(HttpMethod.Get, $"git/repositories/{repoName}/refs/heads/{DarcBranchName}-{branch}");
+            response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repoName}/refs/heads/{DarcBranchName}-{branch}");
             dynamic responseContent = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
 
             // VSTS doesn't fail with a 404 if a branch does not exist, it just returns an empty response object...
@@ -84,7 +88,7 @@ namespace Microsoft.DotNet.Darc
             }
 
             body = JsonConvert.SerializeObject(vstsRefs, serializerSettings);
-            await this.ExecuteGitCommand(HttpMethod.Post, $"git/repositories/{repoName}/refs", body);
+            await this.ExecuteGitCommand(HttpMethod.Post, $"repositories/{repoName}/refs", body);
 
             Console.WriteLine($"Branch '{DarcBranchName}-{branch}' {operation} repo '{repoUri}'!");
 
@@ -126,42 +130,124 @@ namespace Microsoft.DotNet.Darc
 
             string body = JsonConvert.SerializeObject(vstsPush, serializerSettings);
 
-            await this.ExecuteGitCommand(HttpMethod.Post, $"git/repositories/{repoName}/pushes", body, "5.0-preview.2");
+            await this.ExecuteGitCommand(HttpMethod.Post, $"repositories/{repoName}/pushes", body, "5.0-preview.2");
         }
 
-        public Task<string> GetFileContentAsync(string ownerAndRepo, string path)
+        public async Task<string> CheckForOpenedPullRequestsAsync(string repoUri, string darcBranch)
         {
-            throw new NotImplementedException();
+            string pullRequestLink = null;
+            string repoName = SetApiUriAndGetRepoName(repoUri);
+
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repoName}/pullrequests?searchCriteria.targetRefName={darcBranch}");
+
+            dynamic content = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
+            List<dynamic> values = JsonConvert.DeserializeObject<List<dynamic>>(Convert.ToString(content.value));
+            
+            dynamic pr = values.Where(p => ((string)p.title).Contains("[Darc-Update]")).FirstOrDefault();
+
+            if (pr != null)
+            {
+                pullRequestLink = $"{VstsPrUri}{pr.pullRequestId}";
+            }
+
+            return pullRequestLink;
         }
 
-        public Task<string> CheckForOpenedPullRequestsAsync(string repoUri, string darcBranch)
+        public async Task<string> CreatePullRequestAsync(string repoUri, string mergeWithBranch, string sourceBranch, string title = null, string description = null)
         {
-            throw new NotImplementedException();
+            string linkToPullRquest;
+
+            string repoName = SetApiUriAndGetRepoName(repoUri);
+            title = !string.IsNullOrEmpty(title) ? $"[Darc-Update] {title}" : VersionPullRequestTitle;
+            description = description ?? VersionPullRequestDescription;
+
+            VstsPullRequest pullRequest = new VstsPullRequest(title, description, sourceBranch, mergeWithBranch);
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            };
+            string body = JsonConvert.SerializeObject(pullRequest, serializerSettings);
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Post, $"repositories/{repoName}/pullrequests", body);
+
+            dynamic content = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
+            linkToPullRquest = $"{VstsPrUri}{content.pullRequestId}";
+
+            return linkToPullRquest;
         }
 
-        public Task<string> CreatePullRequestAsync(string repoUri, string mergeWithBranch, string sourceBranch, string title = null, string description = null)
+        public async Task<string> UpdatePullRequestAsync(string repoUri, string mergeWithBranch, string sourceBranch, int pullRequestId, string title = null, string description = null)
         {
-            throw new NotImplementedException();
+            string linkToPullRquest;
+            string repoName = SetApiUriAndGetRepoName(repoUri);
+            title = !string.IsNullOrEmpty(title) ? $"[Darc-Update] {title}" : VersionPullRequestTitle;
+            description = description ?? VersionPullRequestDescription;
+
+            VstsPullRequest pullRequest = new VstsPullRequest(title, description, sourceBranch, mergeWithBranch);
+            JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            };
+
+            string body = JsonConvert.SerializeObject(pullRequest, serializerSettings);
+
+            HttpResponseMessage response = await this.ExecuteGitCommand(new HttpMethod("PATCH"), $"repositories/{repoName}/pullrequests/{pullRequestId}", body);
+
+            dynamic content = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
+            linkToPullRquest = $"{VstsPrUri}{content.pullRequestId}";
+
+            return linkToPullRquest;
         }
 
-        public Task<string> UpdatePullRequestAsync(string repoUri, string mergeWithBranch, string sourceBranch, int pullRequestId, string title = null, string description = null)
+        public async Task<Dictionary<string, GitCommit>> GetCommitsForPathAsync(string repoUri, string sha, string branch, string path = "eng")
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Getting the contents of file/files in '{path}' of repo '{repoUri}' in sha '{sha}'");
+            Dictionary<string, GitCommit> commits = new Dictionary<string, GitCommit>();
+            await GetCommitMapForPathAsync(repoUri, sha, branch, commits, path);
+            return commits;
         }
 
-        public Task<Dictionary<string, GitCommit>> GetCommitsForPathAsync(string repoUri, string sha, string branch, string path = "eng")
+        public async Task GetCommitMapForPathAsync(string repoUri, string sha, string branch, Dictionary<string, GitCommit> commits, string path = "eng")
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Getting the contents of file/files in '{path}' of repo '{repoUri}' in sha '{sha}'");
+
+            string repoName = SetApiUriAndGetRepoName(repoUri);
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repoName}/items?scopePath={path}&version={sha}&includeContent=true&versionType=commit&recursionLevel=full");
+
+            dynamic content = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
+            List<VstsItem> items = JsonConvert.DeserializeObject<List<VstsItem>>(Convert.ToString(content.value));
+
+            foreach (VstsItem item in items)
+            {
+                if (!item.IsFolder)
+                {
+                    if (!DependencyFileManager.GetDependencyFiles.Contains(item.Path))
+                    {
+                        string fileContent = await GetFileContentAsync(repoName, item.Path);
+                        byte[] encodedBytes = System.Text.Encoding.UTF8.GetBytes(fileContent);
+                        GitCommit commit = new GitCommit($"Updating contents of file '{item.Path}'", Convert.ToBase64String(encodedBytes), branch);
+                        commits.Add(item.Path, commit);
+                    }
+                }
+            }
+
+            Console.WriteLine($"Getting the contents of file/files in '{path}' of repo '{repoUri}' in sha '{sha}' succeeded!");
         }
 
-        public Task GetCommitMapForPathAsync(string repoUri, string sha, string branch, Dictionary<string, GitCommit> commits, string path = "eng")
+        public async Task<string> GetFileContentAsync(string repo, string path)
         {
-            throw new NotImplementedException();
+            string encodedContent;
+
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repo}/items?path={path}&includeContent=true");
+
+            dynamic file = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
+            encodedContent = file.content;
+
+            return encodedContent;
         }
 
         public async Task<string> GetLastCommitShaAsync(string repo, string branch)
         {
-            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"git/repositories/{repo}/commits?branch={branch}");
+            HttpResponseMessage response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repo}/commits?branch={branch}");
             dynamic content = JsonConvert.DeserializeObject<dynamic>(await response.Content.ReadAsStringAsync());
             List<dynamic> values = JsonConvert.DeserializeObject<List<dynamic>>(Convert.ToString(content.value));
 
@@ -191,7 +277,7 @@ namespace Microsoft.DotNet.Darc
 
             try
             {
-                response = await this.ExecuteGitCommand(HttpMethod.Get, $"git/repositories/{repoName}/items?path={filePath}&versionDescriptor[version]={branch}");
+                response = await this.ExecuteGitCommand(HttpMethod.Get, $"repositories/{repoName}/items?path={filePath}&versionDescriptor[version]={branch}");
             }
             catch (HttpRequestException exc)
             {
@@ -240,8 +326,8 @@ namespace Microsoft.DotNet.Darc
                 throw new ArgumentException($"Repository URI host name '{absolutePath}' should have a project and repo name. i.e. /DefaultCollection/<projectname>/_git/<reponame>");
             }
 
-            // TODO: If all requestUris turn out including /git, add it here and remove the segment from elsewhere
-            VstsApiUri = $"https://{accountName}.visualstudio.com/{projectName}/_apis/";
+            VstsApiUri = $"https://{accountName}.visualstudio.com/{projectName}/_apis/git/";
+            VstsPrUri = $"https://{accountName}.visualstudio.com/{projectName}/_git/{repoName}/pullrequest/";
 
             return repoName;
         }

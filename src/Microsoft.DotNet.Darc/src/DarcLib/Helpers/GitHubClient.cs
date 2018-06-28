@@ -17,6 +17,8 @@ namespace Microsoft.DotNet.Darc
         private const string VersionPullRequestTitle = "[Darc-Update] global.json, version.props and version.details.xml";
         private const string VersionPullRequestDescription = "Darc is trying to update these files to the latest versions found in the Product Dependency Store";
 
+        public GitRepoType Type { get; set; } = GitRepoType.GitHub;
+
         public GitHubClient(string accessToken)
         {
             personalAccessToken = accessToken;

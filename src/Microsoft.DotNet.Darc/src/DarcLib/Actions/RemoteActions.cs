@@ -68,21 +68,23 @@ SELECT TOP 1 [AssetName]
     ,[Sha]
     ,[Type] 
 FROM AssetDependency
-WHERE AssetName like '{assetName}'
+WHERE AssetName like '{assetName}' AND GitType = '{gitClient.Type}'
 ORDER BY DateProduced DESC";
                 await connection.OpenAsync();
 
                 SqlDataReader reader = await command.ExecuteReaderAsync();
 
                 dependencies = await BuildDependencyItemCollectionAsync(reader);
-
-                if (!dependencies.Any())
-                {
-                    Console.WriteLine($"No dependencies were found matching {assetName}.");
-                }
             }
 
-            Console.WriteLine($"Getting latest dependency version for '{assetName}' in the reporting store succeeded!");
+            if (!dependencies.Any())
+            {
+                Console.WriteLine($"No dependencies were found matching {assetName}.");
+            }
+            else
+            {
+                Console.WriteLine($"Getting latest dependency version for '{assetName}' in the reporting store succeeded!");
+            }
 
             return dependencies.FirstOrDefault();
         }
@@ -208,7 +210,7 @@ SELECT DISTINCT [{selectPrefix}AssetName]
     ,[{selectPrefix}Sha]
     ,[{selectPrefix}Type] 
 FROM AssetDependency
-WHERE {queryParameters.whereConditions}";
+WHERE {queryParameters.whereConditions} AND GitType = '{gitClient.Type}'";
                 await connection.OpenAsync();
 
                 SqlDataReader reader = await command.ExecuteReaderAsync();

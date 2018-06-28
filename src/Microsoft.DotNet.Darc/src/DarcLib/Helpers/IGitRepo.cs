@@ -6,6 +6,8 @@ namespace Microsoft.DotNet.Darc
 {
     public interface IGitRepo
     {
+        GitRepoType Type { get; set; }
+
         Task<string> GetFileContentsAsync(string filePath, string repoUri, string branch);
 
         Task CreateDarcBranchAsync(string repoUri, string branch);
