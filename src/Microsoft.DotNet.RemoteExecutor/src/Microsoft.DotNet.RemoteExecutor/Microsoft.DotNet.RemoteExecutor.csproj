@@ -14,7 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.DotNet.RemoteExecutorHost\Microsoft.DotNet.RemoteExecutorHost.csproj"
-                      Condition="'$(TargetFramework)' != 'netstandard2.0'"
                       ReferenceOutputAssembly="false"
                       OutputItemType="Content"
                       CopyToOutputDirectory="PreserveNewest" />
@@ -34,9 +33,9 @@
     </MSBuild>
     <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
       <TfmSpecificPackageFile Include="$(OutputPath)$(TargetName).deps.json" PackagePath="lib\$(TargetFramework)\" />
+      <TfmSpecificPackageFile Include="$(OutputPath)%(ProjectReference.Filename).dll" PackagePath="tools\$(TargetFramework)\" />
     </ItemGroup>
     <ItemGroup Condition="'$(TargetFramework)' == 'netcoreapp2.1'">
-      <TfmSpecificPackageFile Include="$(OutputPath)%(ProjectReference.Filename).dll" PackagePath="tools\$(TargetFramework)\" />
       <TfmSpecificPackageFile Include="$([System.IO.Path]::GetDirectoryName('%(ProjectReferenceTargetPath.Identity)'))\%(ProjectReferenceTargetPath.Filename).runtimeconfig.json" PackagePath="tools\$(TargetFramework)\" />
     </ItemGroup>
     <ItemGroup Condition="'$(TargetFramework)' == 'net472'">

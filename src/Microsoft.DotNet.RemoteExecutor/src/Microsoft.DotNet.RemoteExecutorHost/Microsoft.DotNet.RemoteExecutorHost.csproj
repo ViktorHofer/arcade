@@ -2,7 +2,13 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>netcoreapp2.1;net472</TargetFrameworks>
+    <!--
+      We generate a netstandard executable image which will be invoked by Microsoft.DotNet.RemoteExecutor.
+      The SDK defaults to TargetExt dll, nevertheless CreateProcess invokes that assembly directly
+      on .NET Framework, or with the dotnet host on .NET Core.
+      This is currently needed by corefx which compiles test assemblies against .NET Standard.
+    -->
+    <TargetFrameworks>netcoreapp2.1;net472;netstandard2.0</TargetFrameworks>
     <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
