@@ -3,18 +3,30 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net472;netcoreapp2.1</TargetFrameworks>
+    <CopyLocalLockFileAssemblies Condition="'$(TargetFramework)' == 'netcoreapp2.1'">true</CopyLocalLockFileAssemblies>
     <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
-    <PackageType>MSBuildSdk</PackageType>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <PackageType>MSBuildSdk</PackageType>
     <IsPackable>true</IsPackable>
     <NoWarn>$(NoWarn);0436</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <Compile Include="..\Common\AssemblyResolver.cs" />
+    <Compile Include="..\Common\BuildTask.Desktop.cs" />
+  </ItemGroup>
+
   <ItemGroup>
+    <Compile Include="..\Common\BuildTask.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="$(McMasterExtensionsCommandLineUtils)" />
+    <PackageReference Include="Microsoft.Build" Version="$(MicrosoftBuildVersion)" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildTasksCoreVersion)" />
     <PackageReference Include="System.Diagnostics.Contracts" Version="4.3.0" />
     <PackageReference Include="System.Diagnostics.TextWriterTraceListener" Version="4.0.0" />
     <PackageReference Include="System.Diagnostics.TraceSource" Version="4.0.0" />
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="$(McMasterExtensionsCommandLineUtils)" />
   </ItemGroup>
 
   <ItemGroup>
